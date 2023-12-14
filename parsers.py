@@ -1,8 +1,7 @@
 import json
-import random
-import time
 from bs4 import BeautifulSoup
-import requests
+import aiohttp
+import aiofiles
 
 
 class FunBay:
@@ -11,14 +10,16 @@ class FunBay:
         self.path_to_page = path_to_page
         self.path_to_data = path_to_data
     
-    def get_html_page(self):
-        page = requests.get(self.url).text
-        with open(self.path_to_page, 'w') as f:
-            f.write(page)
+    async def get_html_page(self):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(self.url) as response:
+                result = await response.text()
+                async with aiofiles.open(self.path_to_page, 'w', encoding='utf-8') as f:
+                    await f.write(result)
     
-    def parse_data_to_json(self):
-        with open('data/index.html', 'r') as f:
-            soup = BeautifulSoup(f.read(), 'lxml') 
+    async def parse_data_to_json(self):
+        async with aiofiles.open('data/index.html', 'r', encoding="utf-8") as f:
+            soup = BeautifulSoup(await f.read(), 'lxml') 
             result = []
             counter = 0
             for obj in soup.find_all(class_='tc-item'):
@@ -32,6 +33,5 @@ class FunBay:
                 }
                 result.append(data)
                 counter += 1
-            with open(self.path_to_data, 'w') as f:
-                json.dump(result, f, indent=4)
-
+            async with aiofiles.open(self.path_to_data, 'w', encoding="utf-8") as f:
+                await f.write(json.dumps(result, indent=4))

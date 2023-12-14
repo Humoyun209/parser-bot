@@ -1,8 +1,12 @@
+import asyncio
 import logging 
 from environs import Env
 
-from aiogram import Bot, Dispatcher
-from aiogram.types import Message
+from aiogram import Bot, Dispatcher, F
+from aiogram.types import (Message,
+                           CallbackQuery,
+                           InlineKeyboardButton,
+                           InlineKeyboardMarkup)
 from aiogram.filters import Command
 from database import DataBase
 from parsers import FunBay
@@ -12,7 +16,7 @@ env = Env()
 env.read_env()
 
 
-bot = Bot(token=env.str('TOKEN'))
+bot = Bot(token=env.str('TOKEN'), parse_mode='HTML')
 dp = Dispatcher()
 db = DataBase('db.sqlite3')
 fb = FunBay('https://funpay.com/lots/545/', 'data/index.html', 'data/lots.json')
@@ -26,14 +30,32 @@ logging.basicConfig(
 
 @dp.message(Command(commands=['start']))
 async def process_start(message: Message):
-    fb.get_html_page()
-    fb.parse_data_to_json()
-    new_lots = db.insert_lots()
-    if len(new_lots) == 0:
+    await fb.get_html_page()
+    await fb.parse_data_to_json()
+    new_lots = await db.insert_lots()
+    len_new_lots = len(new_lots)
+    if len_new_lots == 0:
         await message.answer('Новые лоты не найдено')
     else:
-        for lot in new_lots:
-            await message.answer(f'\n✅ Новый лот!\n{lot.get("description")}\n💰 Цена: {lot.get("price")}\n{lot.get("url")}')
+        for i, lot in enumerate(new_lots):
+            if (i+1) % 10 == 0:
+                await asyncio.sleep(2)
+            await bot.send_message(env.str('CHANNEL_URL'), f'\n✅ Новый лот!\n{lot.description}\n💰 <b>Цена:</b> {lot.price}\n<b>Посмотреть на сайте:</b> ‼️<a href="{lot.url}">Перейти</a>‼️')
+            
+
+@dp.message(Command(commands=['admin']))
+async def process_admin(message: Message):
+    delete_month_back = InlineKeyboardButton(text='❌ Удалить лоты', callback_data='delete:month')
+    kb = InlineKeyboardMarkup(inline_keyboard=[[delete_month_back]])
+    await message.answer('Вы можете удалить все лоты, созданные месяц назад: ', reply_markup=kb)
+    
+
+@dp.callback_query(F.data == 'delete:month')
+async def delete_lots(cb: CallbackQuery):
+    await db.delete_old_lots()
+    await cb.message.answer('Все лоты созданные месяц назад, удалены ✅')
+    await cb.message.delete()
+    
 
 
 @dp.message()
